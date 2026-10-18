@@ -1,5 +1,4 @@
 import pytest
-import numpy as np
 from parser import parse_metar_to_numeric
 
 def test_feature_engineering_integrity():

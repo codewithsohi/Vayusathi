@@ -1,4 +1,6 @@
+import glob
 import os
+import sys
 import joblib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -48,7 +50,6 @@ def plot_evaluation(dataset_path: str, model_dir: str = "models"):
     print("[SUCCESS] Saved evaluation figure: nowcasting_evaluation.png")
 
 if __name__ == "__main__":
-    import glob, sys
     if len(sys.argv) > 1:
         target_csv = sys.argv[1]
     else:

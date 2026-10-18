@@ -1,4 +1,6 @@
+import glob
 import os
+import sys
 import joblib
 import numpy as np
 import pandas as pd
@@ -144,6 +146,5 @@ def train_nowcasting_models(dataset_paths: list[str] | str | None = None, model_
     print("=" * 65)
 
 if __name__ == "__main__":
-    import glob, sys
     custom_target = sys.argv[1] if len(sys.argv) > 1 else None
     train_nowcasting_models(custom_target)

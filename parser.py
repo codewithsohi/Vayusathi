@@ -1,6 +1,7 @@
 import math
 import os
 import re
+import sys
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -35,6 +36,157 @@ AIRPORTS = {
     "RJTT": "Tokyo Haneda Airport, Tokyo",
     "VHHH": "Hong Kong International Airport, Hong Kong",
 }
+
+IATA_TO_ICAO = {
+    # India
+    "DEL": ("VIDP", "Indira Gandhi International Airport, Delhi"),
+    "BOM": ("VABB", "Chhatrapati Shivaji Maharaj International Airport, Mumbai"),
+    "BLR": ("VOBL", "Kempegowda International Airport, Bengaluru"),
+    "MAA": ("VOMM", "Chennai International Airport, Chennai"),
+    "CCU": ("VECC", "Netaji Subhash Chandra Bose International Airport, Kolkata"),
+    "HYD": ("VOHS", "Rajiv Gandhi International Airport, Hyderabad"),
+    "COK": ("VOCI", "Cochin International Airport, Kochi"),
+    "PNQ": ("VAPO", "Pune Airport, Pune"),
+    "AMD": ("VAAH", "Sardar Vallabhbhai Patel International Airport, Ahmedabad"),
+    "GOI": ("VOGO", "Dabolim Airport, Goa"),
+    "GOX": ("VOGA", "Manohar International Airport, Mopa, Goa"),
+    "ATQ": ("VIAR", "Sri Guru Ram Dass Jee International Airport, Amritsar"),
+    "TRV": ("VOTV", "Trivandrum International Airport, Thiruvananthapuram"),
+    "JAI": ("VIJP", "Jaipur International Airport, Jaipur"),
+    "LKO": ("VILK", "Chaudhary Charan Singh International Airport, Lucknow"),
+    "IXC": ("VICG", "Shaheed Bhagat Singh International Airport, Chandigarh"),
+    "NAG": ("VANP", "Dr. Babasaheb Ambedkar International Airport, Nagpur"),
+    "GAU": ("VEGT", "Lokpriya Gopinath Bordoloi International Airport, Guwahati"),
+    "PAT": ("VEPT", "Jayprakash Narayan Airport, Patna"),
+    "BBI": ("VEBS", "Biju Patnaik Airport, Bhubaneswar"),
+    "SXR": ("VISR", "Sheikh ul-Alam International Airport, Srinagar"),
+    "IXB": ("VEBD", "Bagdogra Airport, Siliguri"),
+    "IXR": ("VERC", "Birsa Munda Airport, Ranchi"),
+    "VTZ": ("VOVZ", "Visakhapatnam Airport, Visakhapatnam"),
+    "IDR": ("VAID", "Devi Ahilya Bai Holkar Airport, Indore"),
+    "BDQ": ("VABO", "Vadodara Airport, Vadodara"),
+    "UDR": ("VAUD", "Maharana Pratap Airport, Udaipur"),
+    "VNS": ("VEBN", "Lal Bahadur Shastri Airport, Varanasi"),
+    # International Hubs
+    "JFK": ("KJFK", "John F. Kennedy International Airport, New York"),
+    "ORD": ("KORD", "O'Hare International Airport, Chicago"),
+    "LAX": ("KLAX", "Los Angeles International Airport, Los Angeles"),
+    "ATL": ("KATL", "Hartsfield-Jackson Atlanta International Airport, Atlanta"),
+    "SFO": ("KSFO", "San Francisco International Airport, San Francisco"),
+    "EWR": ("KEWR", "Newark Liberty International Airport, New Jersey"),
+    "DFW": ("KDFW", "Dallas/Fort Worth International Airport, Texas"),
+    "MIA": ("KMIA", "Miami International Airport, Florida"),
+    "SEA": ("KSEA", "Seattle-Tacoma International Airport, Washington"),
+    "BOS": ("KBOS", "Boston Logan International Airport, Boston"),
+    "LHR": ("EGLL", "Heathrow Airport, London"),
+    "LGW": ("EGKK", "Gatwick Airport, London"),
+    "MAN": ("EGCC", "Manchester Airport, Manchester"),
+    "CDG": ("LFPG", "Charles de Gaulle Airport, Paris"),
+    "ORY": ("LFPO", "Orly Airport, Paris"),
+    "EDDF": ("EDDF", "Frankfurt Airport, Frankfurt"),
+    "FRA": ("EDDF", "Frankfurt Airport, Frankfurt"),
+    "MUC": ("EDDM", "Munich Airport, Munich"),
+    "AMS": ("EHAM", "Amsterdam Airport Schiphol, Netherlands"),
+    "DXB": ("OMDB", "Dubai International Airport, Dubai"),
+    "DOH": ("OTHH", "Hamad International Airport, Doha"),
+    "AUH": ("OMAA", "Abu Dhabi International Airport, Abu Dhabi"),
+    "SIN": ("WSSS", "Singapore Changi Airport, Singapore"),
+    "HND": ("RJTT", "Tokyo Haneda Airport, Tokyo"),
+    "NRT": ("RJAA", "Narita International Airport, Tokyo"),
+    "HKG": ("VHHH", "Hong Kong International Airport, Hong Kong"),
+    "ICN": ("RKSI", "Incheon International Airport, Seoul"),
+    "BKK": ("VTBS", "Suvarnabhumi Airport, Bangkok"),
+    "KUL": ("WMKK", "Kuala Lumpur International Airport, Malaysia"),
+    "SYD": ("YSSY", "Sydney Kingsford Smith Airport, Sydney"),
+    "MEL": ("YMML", "Melbourne Airport, Melbourne"),
+    "YYZ": ("CYYZ", "Toronto Pearson International Airport, Canada"),
+    "YVR": ("CYVR", "Vancouver International Airport, Canada"),
+}
+
+
+def load_env_file(filepath: str = ".env") -> None:
+    """Loads key=value pairs from a local .env file into os.environ if not already present."""
+    search_paths = [
+        filepath,
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), filepath),
+    ]
+    for p in search_paths:
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith("#") or "=" not in line:
+                            continue
+                        k, v = line.split("=", 1)
+                        k = k.strip()
+                        v = v.strip().strip("'\"")
+                        if k and k not in os.environ:
+                            os.environ[k] = v
+                break
+            except Exception:
+                pass
+
+
+def get_api_key() -> Optional[str]:
+    """Retrieves CheckWX API key from environment or local .env file if configured."""
+    load_env_file()
+    key = os.environ.get("CHECKWX_API_KEY") or os.environ.get("API_KEY")
+    if key:
+        key = key.strip()
+        # Filter out common placeholders or invalid short strings like 'vapo'
+        if len(key) >= 16 and key.lower() not in ("none", "null", "false", "your_actual_api_key_here"):
+            return key
+    return None
+
+
+def resolve_airport_code(code_input: str) -> tuple[str, str]:
+    """
+    Normalizes any worldwide airport code (4-letter ICAO or 3-letter IATA)
+    to a standard 4-letter ICAO code and human-readable airport name.
+    """
+    cleaned = code_input.strip().upper()
+    if not cleaned:
+        return "", ""
+
+    # 1. Check local IATA mapping
+    if cleaned in IATA_TO_ICAO:
+        return IATA_TO_ICAO[cleaned]
+
+    # 2. Check local ICAO mapping
+    if cleaned in AIRPORTS:
+        return cleaned, AIRPORTS[cleaned]
+
+    # 3. If 3 letters (IATA), resolve to ICAO online via open airport database
+    if len(cleaned) == 3:
+        try:
+            res = requests.get(f"https://hexdb.io/api/v1/airport/iata/{cleaned}", timeout=3)
+            if res.status_code == 200:
+                data = res.json()
+                icao = data.get("icao", "").upper()
+                name = data.get("airport", f"Airport {icao or cleaned}")
+                region = data.get("region_name") or data.get("country_code", "")
+                full_name = f"{name}, {region}" if region else name
+                if icao:
+                    return icao, full_name
+        except Exception:
+            pass
+
+    # 4. If 4 letters (ICAO), attempt online resolution to get friendly name
+    if len(cleaned) == 4:
+        try:
+            res = requests.get(f"https://hexdb.io/api/v1/airport/icao/{cleaned}", timeout=3)
+            if res.status_code == 200:
+                data = res.json()
+                name = data.get("airport", f"Airport {cleaned}")
+                region = data.get("region_name") or data.get("country_code", "")
+                full_name = f"{name}, {region}" if region else name
+                return cleaned, full_name
+        except Exception:
+            pass
+
+    return cleaned, f"Airport {cleaned}"
+
 
 WEATHER_PHENOMENA = {
     "DZ": "Drizzle",
@@ -102,6 +254,7 @@ class MetarObservation:
     report_time: str = ""
     weather_phenomena: List[str] = field(default_factory=list)
     cloud_layers: List[str] = field(default_factory=list)
+    airport_name: Optional[str] = None
 
     @property
     def dewpoint_depression(self) -> Optional[float]:
@@ -128,7 +281,7 @@ class MetarObservation:
 
     def to_summary(self) -> str:
         """Converts the observation into a comprehensive, human-readable aviation briefing."""
-        airport_name = AIRPORTS.get(self.station, f"Airport {self.station}")
+        airport_name = self.airport_name or AIRPORTS.get(self.station, f"Airport {self.station}")
         vis_sm = round(self.visibility_m / 1609.34, 2)
         in_hg = (
             round(self.altimeter_hpa / 33.8639, 2)
@@ -271,9 +424,13 @@ def fetch_metar(icao: str, api_key: Optional[str] = None) -> Optional[str]:
             if res.status_code == 200:
                 data = res.json()
                 if "data" in data and len(data["data"]) > 0:
-                    return data["data"][0].strip()
-        except requests.RequestException:
-            pass  # Fall back to NOAA
+                    metar_str = data["data"][0].strip()
+                    if metar_str:
+                        return metar_str
+            elif res.status_code in (401, 403):
+                print(f"[!] Warning: CheckWX API key unauthorized (HTTP {res.status_code}). Falling back to NOAA...")
+        except requests.RequestException as err:
+            print(f"[!] CheckWX connection notice: {err}. Falling back to NOAA...")
 
     # 2. Keyless NOAA Aviation Weather API (free worldwide METARs)
     noaa_url = f"https://aviationweather.gov/api/data/metar?ids={station}&format=raw"
@@ -287,11 +444,11 @@ def fetch_metar(icao: str, api_key: Optional[str] = None) -> Optional[str]:
         raw = response.text.strip()
         return raw if raw else None
     except requests.RequestException as err:
-        print(f"[!] Network error while fetching METAR for {station}: {err}")
+        print(f"[!] NOAA Aviation Weather API error for {station}: {err}")
         return None
 
 
-def parse_metar_to_numeric(raw_metar: str) -> Optional[MetarObservation]:
+def parse_metar_to_numeric(raw_metar: str, airport_name: Optional[str] = None) -> Optional[MetarObservation]:
     raw_tokens = raw_metar.strip().split()
     if not raw_tokens:
         return None
@@ -441,41 +598,50 @@ def parse_metar_to_numeric(raw_metar: str) -> Optional[MetarObservation]:
         report_time=report_time,
         weather_phenomena=weather_phenomena_list,
         cloud_layers=cloud_layers_desc,
+        airport_name=airport_name,
     )
 
 
-def decode_metar_to_text(raw_metar: str) -> str:
+def decode_metar_to_text(raw_metar: str, airport_name: Optional[str] = None) -> str:
     """Decodes a raw METAR string into a full human-readable aviation report."""
-    obs = parse_metar_to_numeric(raw_metar)
+    obs = parse_metar_to_numeric(raw_metar, airport_name=airport_name)
     if not obs:
         return "Error: Could not decode METAR report (empty or malformed)."
     return obs.to_summary()
 
 
 if __name__ == "__main__":
-    import sys
-
     print("=" * 70)
     print("        AEROPULSE: LIVE METAR FETCHER & AVIATION DECODER")
     print("=" * 70)
 
-    api_key_env = os.environ.get("CHECKWX_API_KEY", None)
+    api_key = get_api_key()
 
-    # Allow passing ICAO directly via command line (e.g. python parser.py VIDP) or prompt
+    # Accept airport code directly via command line (e.g. python parser.py VIDP) or prompt
     if len(sys.argv) > 1:
-        icao_input = sys.argv[1].strip().upper()
+        raw_input_code = sys.argv[1].strip()
     else:
-        prompt_text = "Enter Airport ICAO code (e.g., VIDP, KJFK, VABB, EGLL) [default: VIDP]: "
-        icao_input = input(prompt_text).strip().upper()
-        if not icao_input:
-            icao_input = "VIDP"
+        prompt_text = "Enter Airport code (ICAO or IATA, e.g., VIDP, DEL, KJFK, JFK, VABB) [default: VIDP]: "
+        raw_input_code = input(prompt_text).strip()
+        if not raw_input_code:
+            raw_input_code = "VIDP"
 
-    print(f"\n[+] Fetching live observation for {icao_input} from Aviation Weather API...")
-    raw_report = fetch_metar(icao_input, api_key=api_key_env)
+    # Resolve airport code (handles both IATA 3-letter & ICAO 4-letter worldwide)
+    icao_code, airport_name = resolve_airport_code(raw_input_code)
+    if raw_input_code.upper() != icao_code:
+        print(f"[+] Resolved '{raw_input_code.upper()}' -> ICAO {icao_code} ({airport_name})")
+
+    api_source = "CheckWX API" if api_key else "Aviation Weather API (NOAA)"
+    print(f"\n[+] Fetching live observation for {icao_code} from {api_source}...")
+    raw_report = fetch_metar(icao_code, api_key=api_key)
 
     if raw_report:
-        obs = parse_metar_to_numeric(raw_report)
+        obs = parse_metar_to_numeric(raw_report, airport_name=airport_name)
         print("\n" + obs.to_summary())
     else:
-        print(f"[-] Could not find an active METAR report for airport '{icao_input}'.")
-        print("    Please check the 4-letter ICAO code and your internet connection.")
+        print(f"\n[-] Could not find an active METAR report for airport '{raw_input_code.upper()}' (ICAO: {icao_code}).")
+        print(f"    Location: {airport_name}")
+        print("    Notes:")
+        print("    * Joint civil-military airfields (like Pune / VAPO) or regional strips")
+        print("      often report intermittently or publish forecasts (TAF) rather than continuous METARs.")
+        print("    * To test live reports right now, try high-traffic hubs like: VIDP, VABB, VOBL, KJFK, EGLL.")

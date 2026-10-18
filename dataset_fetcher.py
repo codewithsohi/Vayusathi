@@ -1,7 +1,6 @@
 import os
 import requests
 import pandas as pd
-from datetime import datetime
 
 def download_historical_metars(
     station_icao: str,
